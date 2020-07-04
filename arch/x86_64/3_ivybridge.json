@@ -1,20 +1,20 @@
 {
-    name: "ivybridge",
-    wiki: "https://en.wikipedia.org/wiki/Ivy_Bridge_(microarchitecture)",
-    features: [
+    "name": "ivybridge",
+    "wiki": "https://en.wikipedia.org/wiki/Ivy_Bridge_(microarchitecture)",
+    "features": [
         "mmx",
         "sse",
         "sse2",
-        "sse3",
+        "pni",
         "ssse3",
         "sse4_1",
         "sse4_2",
         "popcnt",
         "avx",
         "aes",
-        "pclmul",
+        "pclmulqdq",
         "fsgsbase",
-        "rdrnd",
+        "rdrand",
         "f16c"
     ]
 }

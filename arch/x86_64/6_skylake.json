@@ -1,12 +1,12 @@
 {
-    name: "skylake",
-    wiki: "https://en.wikipedia.org/wiki/Skylake_(microarchitecture)",
-    features: [
+    "name": "skylake",
+    "wiki": "https://en.wikipedia.org/wiki/Skylake_(microarchitecture)",
+    "features": [
         "movbe",
         "mmx",
         "sse",
         "sse2",
-        "sse3",
+        "pni",
         "ssse3",
         "sse4_1",
         "sse4_2",
@@ -14,9 +14,9 @@
         "avx",
         "avx2",
         "aes",
-        "pclmul",
+        "pclmulqdq",
         "fsgsbase",
-        "rdrnd",
+        "rdrand",
         "fma",
         "bmi",
         "bmi2",
