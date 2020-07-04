@@ -18,7 +18,7 @@
         "fsgsbase",
         "rdrand",
         "fma",
-        "bmi",
+        "bmi1",
         "bmi2",
         "f16c"
     ]
