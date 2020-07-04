@@ -1,0 +1,31 @@
+{
+    name: "skylake",
+    wiki: "https://en.wikipedia.org/wiki/Skylake_(microarchitecture)",
+    features: [
+        "movbe",
+        "mmx",
+        "sse",
+        "sse2",
+        "sse3",
+        "ssse3",
+        "sse4_1",
+        "sse4_2",
+        "popcnt",
+        "avx",
+        "avx2",
+        "aes",
+        "pclmul",
+        "fsgsbase",
+        "rdrnd",
+        "fma",
+        "bmi",
+        "bmi2",
+        "f16c",
+        "rdseed",
+        "adcx",
+        "prefetchw",
+        "clflushopt",
+        "xsavec",
+        "xsaves"
+    ]
+}
