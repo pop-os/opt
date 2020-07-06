@@ -80,30 +80,30 @@ impl Pkg {
         }
 
         // Extract package source
-        let source_dir = config.dir.join("source");
-        if ! source_dir.is_dir() {
+        let dir = config.dir.join("source");
+        if ! dir.is_dir() {
             process::Command::new("dpkg-source")
                 .arg("--extract")
                 .arg(&dsc_file)
-                .arg(&source_dir)
+                .arg(&dir)
                 .current_dir(&config.dir)
                 .status()
                 .and_then(status_err)?;
         }
 
-        Ok(source_dir)
+        Ok(dir)
     }
 
     fn patched(&self, source_dir: &Path, config: &Config) -> io::Result<PathBuf> {
-        let patched_dir = config.dir.join("patched");
-        if patched_dir.is_dir() {
-            fs::remove_dir_all(&patched_dir)?;
+        let dir = config.dir.join("patched");
+        if dir.is_dir() {
+            fs::remove_dir_all(&dir)?;
         }
 
         process::Command::new("cp")
             .arg("-a")
             .arg(&source_dir)
-            .arg(&patched_dir)
+            .arg(&dir)
             .current_dir(&config.dir)
             .status()
             .and_then(status_err)?;
@@ -114,7 +114,7 @@ impl Pkg {
             process::Command::new("patch")
                 .arg("-p1")
                 .arg("-i").arg(&patch_file)
-                .current_dir(&patched_dir)
+                .current_dir(&dir)
                 .status()
                 .and_then(status_err)?;
         }
@@ -123,20 +123,21 @@ impl Pkg {
         process::Command::new("dch")
             .arg("--local").arg("popopt")
             .arg("Pop!_OS Optimizations")
+            .current_dir(&dir)
             .status()
             .and_then(status_err)?;
 
-        Ok(patched_dir)
+        Ok(dir)
     }
 
     fn sbuild(&self, source_dir: &Path, sbuild_dist: &str, sbuild_arch: &str, config: &Config) -> io::Result<PathBuf> {
-        let sbuild_dir = config.dir.join(format!("sbuild-{}", sbuild_arch));
-        if sbuild_dir.is_dir() {
+        let dir = config.dir.join(format!("sbuild-{}", sbuild_arch));
+        if dir.is_dir() {
             //TODO: rebuild
-            //fs::remove_dir_all(&sbuild_dir)?;
-            return Ok(sbuild_dir);
+            //fs::remove_dir_all(&dir)?;
+            return Ok(dir);
         }
-        fs::create_dir(&sbuild_dir)?;
+        fs::create_dir(&dir)?;
 
         // Create sbuild config
         //TODO: can flags be passed as an array?
@@ -151,7 +152,7 @@ r#"$build_environment = {{
             config.arch.cxxflags().join(" "),
             config.arch.rustflags().join(" "),
         );
-        let sbuild_conf_file = sbuild_dir.join("sbuild.conf");
+        let sbuild_conf_file = dir.join("sbuild.conf");
         fs::write(&sbuild_conf_file, sbuild_conf)?;
 
         process::Command::new("sbuild")
@@ -161,12 +162,12 @@ r#"$build_environment = {{
             .arg(format!("--extra-repository=deb http://us.archive.ubuntu.com/ubuntu/ {}-updates main restricted universe multiverse", sbuild_dist))
             .arg(format!("--extra-repository=deb http://us.archive.ubuntu.com/ubuntu/ {}-security main restricted universe multiverse", sbuild_dist))
             .arg(&source_dir)
-            .current_dir(&sbuild_dir)
+            .current_dir(&dir)
             .env("SBUILD_CONFIG", &sbuild_conf_file)
             .status()
             .and_then(status_err)?;
 
-        Ok(sbuild_dir)
+        Ok(dir)
     }
 
     pub fn build<P: AsRef<Path>>(&self, arch: &Arch, sbuild_dist: &str, sbuild_archs: &[&str], dir: P) -> io::Result<Vec<PathBuf>> {
