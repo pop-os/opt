@@ -11,3 +11,6 @@ Cargo.lock
 
 # Build directory for optimized packages
 /build/
+
+# Repository of generated packages
+/repo/

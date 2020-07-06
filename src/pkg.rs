@@ -7,10 +7,15 @@ use serde::{Deserialize, Serialize};
 use std::{
     fs,
     io,
-    path::Path,
+    path::{Path, PathBuf},
     process,
     str,
 };
+
+struct Config<'a> {
+    arch: &'a Arch,
+    dir: &'a Path,
+}
 
 #[derive(Deserialize, Serialize)]
 pub struct Pkg {
@@ -55,20 +60,18 @@ impl Pkg {
         Ok(archs)
     }
 
-    pub fn build_version<P: AsRef<Path>>(&self, version: &str, arch: &Arch, build_dir: P) -> io::Result<()> {
-        println!("  - Version {} in {}", version, build_dir.as_ref().display());
-
+    fn source(&self, version: &str, config: &Config) -> io::Result<PathBuf> {
         // Download package source
         process::Command::new("apt-get")
             .arg("source")
             .arg("--only-source")
             .arg("--download-only")
             .arg(format!("{}={}", self.name, version))
-            .current_dir(&build_dir)
+            .current_dir(&config.dir)
             .status()
             .and_then(status_err)?;
 
-        let dsc_file = build_dir.as_ref().join(format!("{}_{}.dsc", self.name, version));
+        let dsc_file = config.dir.join(format!("{}_{}.dsc", self.name, version));
         if ! dsc_file.is_file() {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
@@ -77,19 +80,23 @@ impl Pkg {
         }
 
         // Extract package source
-        let source_dir = build_dir.as_ref().join("source");
+        let source_dir = config.dir.join("source");
         if ! source_dir.is_dir() {
             process::Command::new("dpkg-source")
                 .arg("--extract")
                 .arg(&dsc_file)
                 .arg(&source_dir)
-                .current_dir(&build_dir)
+                .current_dir(&config.dir)
                 .status()
                 .and_then(status_err)?;
         }
 
+        Ok(source_dir)
+    }
+
+    fn patched(&self, source_dir: &Path, config: &Config) -> io::Result<PathBuf> {
         // Apply additional source patches
-        let patched_dir = build_dir.as_ref().join("patched");
+        let patched_dir = config.dir.join("patched");
         if patched_dir.is_dir() {
             fs::remove_dir_all(&patched_dir)?;
         }
@@ -97,7 +104,7 @@ impl Pkg {
             .arg("-a")
             .arg(&source_dir)
             .arg(&patched_dir)
-            .current_dir(&build_dir)
+            .current_dir(&config.dir)
             .status()
             .and_then(status_err)?;
         for patch in self.patches.iter() {
@@ -110,6 +117,18 @@ impl Pkg {
                 .and_then(status_err)?;
         }
 
+        Ok(patched_dir)
+    }
+
+    fn sbuild(&self, source_dir: &Path, sbuild_dist: &str, sbuild_arch: &str, config: &Config) -> io::Result<PathBuf> {
+        let sbuild_dir = config.dir.join(format!("sbuild-{}", sbuild_arch));
+        if sbuild_dir.is_dir() {
+            //TODO: rebuild
+            //fs::remove_dir_all(&sbuild_dir)?;
+            return Ok(sbuild_dir);
+        }
+        fs::create_dir(&sbuild_dir)?;
+
         // Create sbuild config
         //TODO: can flags be passed as an array?
         let sbuild_conf = format!(
@@ -119,41 +138,39 @@ r#"$build_environment = {{
     'RUSTFLAGS' => '{}',
 }};
 "#,
-            arch.cflags().join(" "),
-            arch.cxxflags().join(" "),
-            arch.rustflags().join(" "),
+            config.arch.cflags().join(" "),
+            config.arch.cxxflags().join(" "),
+            config.arch.rustflags().join(" "),
         );
-        let sbuild_conf_file = build_dir.as_ref().join("sbuild.conf");
+        let sbuild_conf_file = sbuild_dir.join("sbuild.conf");
         fs::write(&sbuild_conf_file, sbuild_conf)?;
 
-        // Build package source
-        //TODO: set this based on how the package was downloaded
-        let sbuild_dist = "focal";
-        let sbuild_arch = "amd64";
         process::Command::new("sbuild")
             .arg("--no-apt-distupgrade")
             .arg(format!("--dist={}", sbuild_dist))
             .arg(format!("--arch={}", sbuild_arch))
             .arg(format!("--extra-repository=deb http://us.archive.ubuntu.com/ubuntu/ {}-updates main restricted universe multiverse", sbuild_dist))
             .arg(format!("--extra-repository=deb http://us.archive.ubuntu.com/ubuntu/ {}-security main restricted universe multiverse", sbuild_dist))
-            .arg(&patched_dir)
-            .current_dir(&build_dir)
+            .arg(&source_dir)
+            .current_dir(&sbuild_dir)
             .env("SBUILD_CONFIG", &sbuild_conf_file)
             .status()
             .and_then(status_err)?;
 
-        Ok(())
+        Ok(sbuild_dir)
     }
 
-    pub fn build<P: AsRef<Path>>(&self, arch: &Arch, build_dir: P) -> io::Result<()> {
-        println!("- Package {} in {}", self.name, build_dir.as_ref().display());
+    pub fn build<P: AsRef<Path>>(&self, arch: &Arch, sbuild_dist: &str, sbuild_archs: &[&str], dir: P) -> io::Result<Vec<PathBuf>> {
+        let dir = dir.as_ref();
+
+        println!("- Package {} in {}", self.name, dir.display());
 
         //TODO: allow downloading for other series
         let output = process::Command::new("apt-cache")
             .arg("showsrc")
             .arg("--only-source")
             .arg(&self.name)
-            .current_dir(&build_dir)
+            .current_dir(&dir)
             .stdout(process::Stdio::piped())
             .spawn()?
             .wait_with_output()?;
@@ -172,7 +189,29 @@ r#"$build_environment = {{
         }
 
         let version = source_value(source, "Version")?;
-        let version_build_dir = ensure_dir(build_dir.as_ref().join(&version))?;
-        self.build_version(&version, arch, &version_build_dir)
+        let version_dir = ensure_dir(dir.join(&version))?;
+        println!("  - Version {} in {}", version, version_dir.display());
+
+        let config = Config {
+            arch,
+            dir: &version_dir,
+        };
+
+        let source_dir = self.source(&version, &config)?;
+        let patched_dir = self.patched(&source_dir, &config)?;
+
+        let mut debs = Vec::new();
+        for sbuild_arch in sbuild_archs {
+            println!("    - sbuild {}", sbuild_arch);
+            let sbuild_dir = self.sbuild(&patched_dir, sbuild_dist, sbuild_arch, &config)?;
+            for entry_res in fs::read_dir(&sbuild_dir)? {
+                let entry = entry_res?;
+                if entry.file_name().to_str().unwrap_or("").ends_with(".deb") {
+                    debs.push(entry.path());
+                }
+            }
+        }
+
+        Ok(debs)
     }
 }
