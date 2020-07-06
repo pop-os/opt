@@ -95,11 +95,11 @@ impl Pkg {
     }
 
     fn patched(&self, source_dir: &Path, config: &Config) -> io::Result<PathBuf> {
-        // Apply additional source patches
         let patched_dir = config.dir.join("patched");
         if patched_dir.is_dir() {
             fs::remove_dir_all(&patched_dir)?;
         }
+
         process::Command::new("cp")
             .arg("-a")
             .arg(&source_dir)
@@ -107,6 +107,8 @@ impl Pkg {
             .current_dir(&config.dir)
             .status()
             .and_then(status_err)?;
+
+        // Apply additional source patches
         for patch in self.patches.iter() {
             let patch_file = fs::canonicalize(patch)?;
             process::Command::new("patch")
@@ -116,6 +118,13 @@ impl Pkg {
                 .status()
                 .and_then(status_err)?;
         }
+
+        // Update changelog
+        process::Command::new("dch")
+            .arg("--local").arg("popopt")
+            .arg("Pop!_OS Optimizations")
+            .status()
+            .and_then(status_err)?;
 
         Ok(patched_dir)
     }
