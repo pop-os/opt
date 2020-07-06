@@ -43,6 +43,12 @@ impl Arch {
         ]
     }
 
+    pub fn cxxflags(&self) -> Vec<String> {
+        vec![
+            format!("-march={}", self.name),
+        ]
+    }
+
     pub fn rustflags(&self) -> Vec<String> {
         vec![
             format!("--codegen"),

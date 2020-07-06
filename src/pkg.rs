@@ -115,10 +115,12 @@ impl Pkg {
         let sbuild_conf = format!(
 r#"$build_environment = {{
     'DEB_CFLAGS_APPEND' => '{}',
+    'DEB_CXXFLAGS_APPEND' => '{}',
     'RUSTFLAGS' => '{}',
 }};
 "#,
             arch.cflags().join(" "),
+            arch.cxxflags().join(" "),
             arch.rustflags().join(" "),
         );
         let sbuild_conf_file = build_dir.as_ref().join("sbuild.conf");
