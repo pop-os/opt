@@ -1,0 +1,15 @@
+name = "sandybridge"
+wiki = "https://en.wikipedia.org/wiki/Sandy_Bridge"
+features = [
+    "mmx",
+    "sse",
+    "sse2",
+    "pni",
+    "ssse3",
+    "sse4_1",
+    "sse4_2",
+    "popcnt",
+    "avx",
+    "aes",
+    "pclmulqdq"
+]

@@ -1,0 +1,26 @@
+name = "broadwell"
+wiki = "https://en.wikipedia.org/wiki/Broadwell_(microarchitecture)"
+features = [
+   "movbe",
+   "mmx",
+   "sse",
+   "sse2",
+   "pni",
+   "ssse3",
+   "sse4_1",
+   "sse4_2",
+   "popcnt",
+   "avx",
+   "avx2",
+   "aes",
+   "pclmulqdq",
+   "fsgsbase",
+   "rdrand",
+   "fma",
+   "bmi1",
+   "bmi2",
+   "f16c",
+   "rdseed",
+   "adx",
+   "3dnowprefetch"
+]

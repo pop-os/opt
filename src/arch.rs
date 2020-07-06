@@ -16,8 +16,8 @@ pub struct Arch {
 
 impl Arch {
     pub fn load<P: AsRef<Path>>(p: P) -> io::Result<Self> {
-        let json = fs::read_to_string(p)?;
-        serde_json::from_str(&json).map_err(|err| io::Error::new(
+        let data = fs::read_to_string(p)?;
+        toml::from_str(&data).map_err(|err| io::Error::new(
             io::ErrorKind::InvalidData,
             err,
         ))
