@@ -1,0 +1,14 @@
+diff -ruwN source/debian/rules patched/debian/rules
+--- source/debian/rules	2020-04-14 13:26:04.000000000 -0600
++++ patched/debian/rules	2020-07-06 10:19:09.981898799 -0600
+@@ -107,8 +107,8 @@
+ BUILD_CC = $(DEB_BUILD_GNU_TYPE)-$(BASE_CC)
+ BUILD_CXX = $(DEB_BUILD_GNU_TYPE)-$(BASE_CXX)
+ 
+-BUILD_CFLAGS = -O2 -g
+-HOST_CFLAGS = -pipe -O2 -g $(call xx,extra_cflags)
++BUILD_CFLAGS = -O2 -g $(DEB_CFLAGS_APPEND)
++HOST_CFLAGS = -pipe -O2 -g $(call xx,extra_cflags) $(DEB_CFLAGS_APPEND)
+ 
+ # 32-bit MIPS builders have a 2GB memory space. This is not enough to
+ # build test-tgmath3.o with GCC, unless tweaking the garbage collector.

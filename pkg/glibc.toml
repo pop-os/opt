@@ -1,0 +1,4 @@
+name = "glibc"
+patches = [
+    "patch/glibc.patch"
+]
