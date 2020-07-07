@@ -1,0 +1,4 @@
+name = "gcc-9"
+patches = [
+    "patch/gcc-9.patch"
+]

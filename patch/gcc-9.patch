@@ -1,0 +1,13 @@
+--- source/debian/rules2	2020-03-31 02:29:36.000000000 -0600
++++ patched/debian/rules2	2020-07-07 11:04:25.241689217 -0600
+@@ -195,6 +195,10 @@
+ 	--prefix=/$(PF) \
+ 	--with-gcc-major-version-only \
+ 
++ifneq ($(POP_OPT_ARCH),)
++  CONFARGS += --with-arch=$(POP_OPT_ARCH)
++endif
++
+ ifneq (,$(with_build_sysroot))
+   CONFARGS += \
+ 	--with-as=$(binutils_prefix)/$(DEB_TARGET_GNU_TYPE)-as \
