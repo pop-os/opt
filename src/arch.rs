@@ -9,6 +9,7 @@ use std::{
 
 #[derive(Deserialize, Serialize)]
 pub struct Arch {
+    pub level: u32,
     pub name: String,
     pub wiki: String,
     pub features: Vec<String>,

@@ -121,7 +121,8 @@ impl Pkg {
 
         // Update changelog
         process::Command::new("dch")
-            .arg("--local").arg("popopt")
+            .arg("--distribution").arg(config.dist)
+            .arg("--newversion").arg(format!("{}popopt{}", config.version, config.arch.level))
             .arg("Pop!_OS Optimizations")
             .current_dir(&dir)
             .status()

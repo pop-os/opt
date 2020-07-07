@@ -1,3 +1,4 @@
+level = 4
 name = "haswell"
 wiki = "https://en.wikipedia.org/wiki/Haswell_(microarchitecture)"
 features = [

@@ -1,3 +1,4 @@
+level = 5
 name = "broadwell"
 wiki = "https://en.wikipedia.org/wiki/Broadwell_(microarchitecture)"
 features = [

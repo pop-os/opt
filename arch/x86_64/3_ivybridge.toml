@@ -1,3 +1,4 @@
+level = 3
 name = "ivybridge"
 wiki = "https://en.wikipedia.org/wiki/Ivy_Bridge_(microarchitecture)"
 features = [
