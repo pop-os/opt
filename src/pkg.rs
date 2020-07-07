@@ -175,9 +175,12 @@ r#"$build_environment = {{
         let mut command = process::Command::new("sbuild");
         if sbuild_arch == "amd64" {
             command.arg("--arch-all");
+        } else {
+            command.arg("--no-arch-all");
         }
         command
             .arg("--no-apt-distupgrade")
+            .arg("--verbose")
             .arg(format!("--dist={}", config.dist))
             .arg(format!("--arch={}", sbuild_arch))
             .arg(format!("--extra-repository=deb http://us.archive.ubuntu.com/ubuntu/ {}-updates main restricted universe multiverse", config.dist))
