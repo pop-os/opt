@@ -1,6 +1,7 @@
 use crate::{
     Arch,
     ensure_dir,
+    ensure_dir_clean,
     status_err,
 };
 use serde::{Deserialize, Serialize};
@@ -14,6 +15,8 @@ use std::{
 
 struct Config<'a> {
     arch: &'a Arch,
+    dist: &'a str,
+    version: &'a str,
     dir: &'a Path,
 }
 
@@ -60,18 +63,32 @@ impl Pkg {
         Ok(archs)
     }
 
-    fn source(&self, version: &str, config: &Config) -> io::Result<PathBuf> {
+    fn source(&self, config: &Config) -> io::Result<PathBuf> {
+        let dir = config.dir.join("source");
+        if dir.is_dir() {
+            return Ok(dir);
+        }
+
+        let share_name = format!("popopt_{}_{}_{}_{}", config.arch.name, config.dist, self.name, config.version);
+        let share_dir = ensure_dir_clean(format!("/var/lib/sbuild/build/{}", share_name))?;
+
         // Download package source
-        process::Command::new("apt-get")
+        //TODO: Add updates and security
+        process::Command::new("schroot")
+            //TODO: Use sbuild arch?
+            .arg("--chroot").arg(format!("{}-amd64-sbuild", config.dist))
+            .arg("--directory").arg(format!("/build/{}", share_name))
+            .arg("--")
+            .arg("apt-get")
             .arg("source")
             .arg("--only-source")
             .arg("--download-only")
-            .arg(format!("{}={}", self.name, version))
+            .arg(format!("{}={}", self.name, config.version))
             .current_dir(&config.dir)
             .status()
             .and_then(status_err)?;
 
-        let dsc_file = config.dir.join(format!("{}_{}.dsc", self.name, version));
+        let dsc_file = share_dir.join(format!("{}_{}.dsc", self.name, config.version));
         if ! dsc_file.is_file() {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
@@ -80,16 +97,15 @@ impl Pkg {
         }
 
         // Extract package source
-        let dir = config.dir.join("source");
-        if ! dir.is_dir() {
-            process::Command::new("dpkg-source")
-                .arg("--extract")
-                .arg(&dsc_file)
-                .arg(&dir)
-                .current_dir(&config.dir)
-                .status()
-                .and_then(status_err)?;
-        }
+        process::Command::new("dpkg-source")
+            .arg("--extract")
+            .arg(&dsc_file)
+            .arg(&dir)
+            .current_dir(&config.dir)
+            .status()
+            .and_then(status_err)?;
+
+        fs::remove_dir_all(&share_dir)?;
 
         Ok(dir)
     }
@@ -131,7 +147,7 @@ impl Pkg {
         Ok(dir)
     }
 
-    fn sbuild(&self, source_dir: &Path, sbuild_dist: &str, sbuild_arch: &str, config: &Config) -> io::Result<PathBuf> {
+    fn sbuild(&self, source_dir: &Path, sbuild_arch: &str, config: &Config) -> io::Result<PathBuf> {
         let dir = config.dir.join(format!("sbuild-{}", sbuild_arch));
         if dir.is_dir() {
             //TODO: rebuild
@@ -156,12 +172,16 @@ r#"$build_environment = {{
         let sbuild_conf_file = dir.join("sbuild.conf");
         fs::write(&sbuild_conf_file, sbuild_conf)?;
 
-        process::Command::new("sbuild")
+        let mut command = process::Command::new("sbuild");
+        if sbuild_arch == "amd64" {
+            command.arg("--arch-all");
+        }
+        command
             .arg("--no-apt-distupgrade")
-            .arg(format!("--dist={}", sbuild_dist))
+            .arg(format!("--dist={}", config.dist))
             .arg(format!("--arch={}", sbuild_arch))
-            .arg(format!("--extra-repository=deb http://us.archive.ubuntu.com/ubuntu/ {}-updates main restricted universe multiverse", sbuild_dist))
-            .arg(format!("--extra-repository=deb http://us.archive.ubuntu.com/ubuntu/ {}-security main restricted universe multiverse", sbuild_dist))
+            .arg(format!("--extra-repository=deb http://us.archive.ubuntu.com/ubuntu/ {}-updates main restricted universe multiverse", config.dist))
+            .arg(format!("--extra-repository=deb http://us.archive.ubuntu.com/ubuntu/ {}-security main restricted universe multiverse", config.dist))
             .arg(&source_dir)
             .current_dir(&dir)
             .env("SBUILD_CONFIG", &sbuild_conf_file)
@@ -171,13 +191,20 @@ r#"$build_environment = {{
         Ok(dir)
     }
 
-    pub fn build<P: AsRef<Path>>(&self, arch: &Arch, sbuild_dist: &str, sbuild_archs: &[&str], dir: P) -> io::Result<Vec<PathBuf>> {
+    pub fn build<P: AsRef<Path>>(&self, arch: &Arch, dist: &str, sbuild_archs: &[&str], dir: P) -> io::Result<Vec<PathBuf>> {
         let dir = dir.as_ref();
 
         println!("- Package {} in {}", self.name, dir.display());
 
-        //TODO: allow downloading for other series
-        let output = process::Command::new("apt-cache")
+        // Get version of source
+        //TODO: Add updates and security
+        let output = process::Command::new("schroot")
+            //TODO: Use sbuild arch?
+            .arg("--chroot").arg(format!("{}-amd64-sbuild", dist))
+            .arg("--directory").arg("/root")
+            .arg("--user").arg("root")
+            .arg("--")
+            .arg("apt-cache")
             .arg("showsrc")
             .arg("--only-source")
             .arg(&self.name)
@@ -205,16 +232,18 @@ r#"$build_environment = {{
 
         let config = Config {
             arch,
+            dist,
+            version: &version,
             dir: &version_dir,
         };
 
-        let source_dir = self.source(&version, &config)?;
+        let source_dir = self.source(&config)?;
         let patched_dir = self.patched(&source_dir, &config)?;
 
         let mut debs = Vec::new();
         for sbuild_arch in sbuild_archs {
             println!("    - sbuild {}", sbuild_arch);
-            let sbuild_dir = self.sbuild(&patched_dir, sbuild_dist, sbuild_arch, &config)?;
+            let sbuild_dir = self.sbuild(&patched_dir, sbuild_arch, &config)?;
             for entry_res in fs::read_dir(&sbuild_dir)? {
                 let entry = entry_res?;
                 if entry.file_name().to_str().unwrap_or("").ends_with(".deb") {
