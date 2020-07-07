@@ -41,7 +41,9 @@ fn pkg(arch: &Arch) -> io::Result<()> {
         let pkg_pool_dir = ensure_dir(pool_dir.join(&pkg.name))?;
         for deb in debs {
             let pool_deb = pkg_pool_dir.join(&deb.file_name().unwrap());
-            fs::hard_link(&deb, &pool_deb)?;
+            if ! pool_deb.is_file() {
+                fs::hard_link(&deb, &pool_deb)?;
+            }
         }
     }
 
