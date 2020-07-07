@@ -162,11 +162,13 @@ impl Pkg {
 r#"$build_environment = {{
     'DEB_CFLAGS_APPEND' => '{}',
     'DEB_CXXFLAGS_APPEND' => '{}',
+    'POP_OPT_ARCH' => '{}',
     'RUSTFLAGS' => '{}',
 }};
 "#,
             config.arch.cflags().join(" "),
             config.arch.cxxflags().join(" "),
+            config.arch.name,
             config.arch.rustflags().join(" "),
         );
         let sbuild_conf_file = dir.join("sbuild.conf");
