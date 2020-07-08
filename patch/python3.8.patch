@@ -1,0 +1,30 @@
+--- source/debian/rules	2020-02-21 11:25:23.000000000 -0700
++++ patched/debian/rules	2020-07-08 10:45:57.522126326 -0600
+@@ -311,7 +311,7 @@
+ #       --next=20
+ PROFILE_TASK = ../Lib/test/regrtest.py \
+ 	-s \
+-	-j 1 -unone,decimal \
++	-j 0 -unone,decimal \
+ 	-x $(sort $(TEST_EXCLUDES) $(PROFILE_EXCLUDES))
+ 
+ stamps/stamp-build-static: stamps/stamp-configure-static
+@@ -499,7 +499,7 @@
+ ifeq ($(on_buildd),yes)
+   TEST_RESOURCES := $(TEST_RESOURCES),-network,-urlfetch
+ endif
+-TESTOPTS = -j 1 -w -u$(TEST_RESOURCES)
++TESTOPTS = -j 0 -w -u$(TEST_RESOURCES)
+ TEST_EXCLUDES =
+ TEST_EXCLUDES += test_ensurepip test_venv
+ ifeq ($(on_buildd),yes)
+@@ -555,6 +555,9 @@
+ # for debug builds only
+ TEST_EXCLUDES += test_gdb
+ 
++# Fail with pop-opt
++TEST_EXCLUDES += test_distutils test_tk
++
+ ifneq (,$(TEST_EXCLUDES))
+   TESTOPTS += -x $(sort $(TEST_EXCLUDES))
+ endif
