@@ -14,7 +14,7 @@ use std::{
     process,
 };
 
-fn build(arch: &Arch) -> io::Result<()> {
+fn build(arch: &Arch, args: &[String]) -> io::Result<()> {
     //TODO: passed as argument and used in pkg.build
     let sbuild_dist = "focal";
     //TODO: get dynamically
@@ -37,6 +37,11 @@ fn build(arch: &Arch) -> io::Result<()> {
 
     let pkgs = Pkg::load_all("pkg")?;
     for pkg in pkgs {
+        if ! args.is_empty() && ! args.contains(&pkg.name) {
+            println!("- skipping {}", pkg.name);
+            continue;
+        }
+
         let pkg_build_dir = ensure_dir(build_dir.join(&pkg.name))?;
         let debs = pkg.build(arch, sbuild_dist, &sbuild_archs, &pkg_build_dir)?;
 
@@ -138,7 +143,7 @@ fn chroot(_arch: &Arch) -> io::Result<()> {
     let parent_dir = Path::new("/srv/chroot");
     for sbuild_arch in sbuild_archs.iter() {
         let name = format!("{}-{}-popopt", sbuild_dist, sbuild_arch);
-        println!("chroot {}", name);
+        println!("- chroot {}", name);
         let dir = parent_dir.join(&name);
         if ! dir.is_dir() {
             process::Command::new("sudo")
@@ -222,7 +227,7 @@ fn pop_opt(args: &[String]) -> io::Result<()> {
 
     match args.get(0).map(|x| x.as_str()) {
         None => Ok(()),
-        Some("build") => build(&arch),
+        Some("build") => build(&arch, &args[1..]),
         Some("chroot") => chroot(&arch),
         Some("repo") => repo(&arch),
         Some(arg) => Err(io::Error::new(
