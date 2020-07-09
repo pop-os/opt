@@ -10,6 +10,7 @@ use std::{
     fmt::Write,
     fs,
     io,
+    path::Path,
     process,
 };
 
@@ -128,6 +129,50 @@ fn build(arch: &Arch) -> io::Result<()> {
     Ok(())
 }
 
+fn chroot(_arch: &Arch) -> io::Result<()> {
+    //TODO: passed as argument
+    let sbuild_dist = "focal";
+    let sbuild_archs = ["amd64", "i386"];
+    let mirror = "http://archive.ubuntu.com/ubuntu";
+
+    let parent_dir = Path::new("/srv/chroot");
+    for sbuild_arch in sbuild_archs.iter() {
+        let name = format!("{}-{}-popopt", sbuild_dist, sbuild_arch);
+        println!("chroot {}", name);
+        let dir = parent_dir.join(&name);
+        if ! dir.is_dir() {
+            process::Command::new("sudo")
+                .arg("sbuild-createchroot")
+                .arg(format!("--arch={}", sbuild_arch))
+                .arg("--chroot-suffix=-popopt")
+                .arg("--components=main,restricted,universe,multiverse")
+                .arg(format!("--extra-repository=deb {} {}-updates main restricted universe multiverse", mirror, sbuild_dist))
+                .arg(format!("--extra-repository=deb-src {} {}-updates main restricted universe multiverse", mirror, sbuild_dist))
+                .arg(format!("--extra-repository=deb {} {}-security main restricted universe multiverse", mirror, sbuild_dist))
+                .arg(format!("--extra-repository=deb-src {} {}-security main restricted universe multiverse", mirror, sbuild_dist))
+                .arg(sbuild_dist)
+                .arg(&dir)
+                .arg(mirror)
+                .status()
+                .and_then(status_err)?;
+        }
+
+        process::Command::new("sudo")
+            .arg("sbuild-update")
+            .arg("--update")
+            .arg("--dist-upgrade")
+            .arg("--clean")
+            .arg("--autoclean")
+            .arg("--autoremove")
+            .arg(format!("--arch={}", sbuild_arch))
+            .arg(&name)
+            .status()
+            .and_then(status_err)?;
+    }
+
+    Ok(())
+}
+
 fn repo(arch: &Arch) -> io::Result<()> {
     let url = format!("https://apt.pop-os.org/opt/{}/", arch.name);
     println!("Adding {}", url);
@@ -178,6 +223,7 @@ fn pop_opt(args: &[String]) -> io::Result<()> {
     match args.get(0).map(|x| x.as_str()) {
         None => Ok(()),
         Some("build") => build(&arch),
+        Some("chroot") => chroot(&arch),
         Some("repo") => repo(&arch),
         Some(arg) => Err(io::Error::new(
             io::ErrorKind::Other,

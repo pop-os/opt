@@ -27,17 +27,24 @@ pub struct Pkg {
     pub patches: Vec<String>,
 }
 
-fn source_value(source: &str, key: &str) -> io::Result<String> {
+fn source_values(source: &str, key: &str) -> io::Result<Vec<String>> {
+    let mut values = Vec::new();
+
     let key_sep = format!("{}: ", key);
     for line in source.lines() {
         if line.starts_with(&key_sep) {
-            return Ok(line[key_sep.len()..].to_string())
+            values.push(line[key_sep.len()..].to_string());
         }
     }
-    Err(io::Error::new(
-        io::ErrorKind::NotFound,
-        format!("failed to find '{}' key in source", key)
-    ))
+
+    if ! values.is_empty() {
+        Ok(values)
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("failed to find '{}' key in source", key)
+        ))
+    }
 }
 
 impl Pkg {
@@ -76,7 +83,7 @@ impl Pkg {
         //TODO: Add updates and security
         process::Command::new("schroot")
             //TODO: Use sbuild arch?
-            .arg("--chroot").arg(format!("{}-amd64-sbuild", config.dist))
+            .arg("--chroot").arg(format!("{}-amd64-popopt", config.dist))
             .arg("--directory").arg(format!("/build/{}", share_name))
             .arg("--")
             .arg("apt-get")
@@ -183,6 +190,7 @@ r#"$build_environment = {{
         command
             .arg("--no-apt-distupgrade")
             .arg("--verbose")
+            .arg(format!("--chroot={}-{}-popopt", config.dist, sbuild_arch))
             .arg(format!("--dist={}", config.dist))
             .arg(format!("--arch={}", sbuild_arch))
             .arg(format!("--extra-repository=deb http://us.archive.ubuntu.com/ubuntu/ {}-updates main restricted universe multiverse", config.dist))
@@ -202,10 +210,9 @@ r#"$build_environment = {{
         println!("- Package {} in {}", self.name, dir.display());
 
         // Get version of source
-        //TODO: Add updates and security
         let output = process::Command::new("schroot")
             //TODO: Use sbuild arch?
-            .arg("--chroot").arg(format!("{}-amd64-sbuild", dist))
+            .arg("--chroot").arg(format!("{}-amd64-popopt", dist))
             .arg("--directory").arg("/root")
             .arg("--user").arg("root")
             .arg("--")
@@ -223,15 +230,31 @@ r#"$build_environment = {{
             err
         ))?;
 
-        let package = source_value(source, "Package")?;
-        if self.name != package {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!("requested source '{}' does not match source '{}'", self.name, package)
-            ));
+        let packages = source_values(source, "Package")?;
+        for package in packages.iter() {
+            if &self.name != package {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("requested source '{}' does not match source '{}'", self.name, package)
+                ));
+            }
         }
 
-        let version = source_value(source, "Version")?;
+        let versions = source_values(source, "Version")?;
+        let mut version = &versions[0];
+        for other_version in versions.iter() {
+            let status = process::Command::new("dpkg")
+                .arg("--compare-versions")
+                .arg(other_version)
+                .arg("gt")
+                .arg(version)
+                .status()?;
+            match status.code() {
+                Some(0) => version = other_version,
+                _ => (),
+            }
+        }
+
         let version_dir = ensure_dir(dir.join(&version))?;
         println!("  - Version {} in {}", version, version_dir.display());
 
