@@ -6,13 +6,14 @@ use pop_opt::{
     status_err,
 };
 use std::{
+    env,
     fmt::Write,
     fs,
     io,
     process,
 };
 
-fn pkg(arch: &Arch) -> io::Result<()> {
+fn build(arch: &Arch) -> io::Result<()> {
     //TODO: passed as argument and used in pkg.build
     let sbuild_dist = "focal";
     //TODO: get dynamically
@@ -127,7 +128,21 @@ fn pkg(arch: &Arch) -> io::Result<()> {
     Ok(())
 }
 
-fn arch() -> io::Result<()> {
+fn repo(arch: &Arch) -> io::Result<()> {
+    let url = format!("https://apt.pop-os.org/opt/{}/", arch.name);
+    println!("Adding {}", url);
+    let os_release = os_release::OsRelease::new()?;
+    let source = format!("deb {} {} main", url, os_release.version_codename);
+    process::Command::new("sudo")
+        .arg("add-apt-repository")
+        .arg("--update")
+        .arg("--yes")
+        .arg(source)
+        .status()
+        .and_then(status_err)
+}
+
+fn pop_opt(args: &[String]) -> io::Result<()> {
     let cpu_features = Arch::cpu_features()?;
     println!("CPU features: {:?}", cpu_features);
     println!();
@@ -146,24 +161,37 @@ fn arch() -> io::Result<()> {
         }
     }
 
-    if let Some(arch) = highest {
-        println!();
-        println!("{}: Highest arch found", arch.name);
-        println!("cflags: {:?}", arch.cflags());
-        println!("rustflags: {:?}", arch.rustflags());
+    let arch = match highest {
+        Some(some) => some,
+        None => return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "no optimization level found"
+        ))
+    };
 
-        println!();
-        pkg(&arch)?;
+    println!();
+    println!("{}: Highest arch found", arch.name);
+    println!("cflags: {:?}", arch.cflags());
+    println!("rustflags: {:?}", arch.rustflags());
+    println!();
+
+    match args.get(0).map(|x| x.as_str()) {
+        None => Ok(()),
+        Some("build") => build(&arch),
+        Some("repo") => repo(&arch),
+        Some(arg) => Err(io::Error::new(
+            io::ErrorKind::Other,
+            format!("unknown subcommand '{}'", arg)
+        ))
     }
-
-    Ok(())
 }
 
 fn main() {
-    match arch() {
+    let args: Vec<String> = env::args().skip(1).collect();
+    match pop_opt(&args) {
         Ok(()) => (),
         Err(err) => {
-            eprintln!("pop-opt: {}", err);
+            eprintln!("pop-opt {:?}: {}", args, err);
             process::exit(1);
         }
     }
