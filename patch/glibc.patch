@@ -20,8 +20,8 @@ diff -ruwN source/debian/testsuite-xfail-debian.mk patched/debian/testsuite-xfai
  test-xfail-tst-system = yes
  
 +# Fails in pop-opt
-+text-xfail-tst-initfinilazyfail = yes
-+text-xfail-tst-latepthread = yes
++test-xfail-tst-initfinilazyfail = yes
++test-xfail-tst-latepthread = yes
 +test-xfail-tst-support_descriptors = yes
 +
  ######################################################################
