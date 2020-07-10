@@ -178,18 +178,81 @@ fn chroot(_arch: &Arch) -> io::Result<()> {
     Ok(())
 }
 
-fn repo(arch: &Arch) -> io::Result<()> {
+fn repo(arch: &Arch, args: &[String]) -> io::Result<()> {
+    let remove = args.contains(&"-r".to_string());
+
     let url = format!("https://apt.pop-os.org/opt/{}/", arch.name);
-    println!("Adding {}", url);
-    let os_release = os_release::OsRelease::new()?;
-    let source = format!("deb {} {} main", url, os_release.version_codename);
+    println!("- {} {}", if remove { "Removing" } else { "Adding" }, url);
+
+    //TODO: something better than this preferences hack to remove opt packages
+    let pref_file = Path::new("/etc/apt/preferences.d/popopt");
+    if remove {
+        process::Command::new("sudo")
+            .arg("bash")
+            .arg("-c")
+            .arg(format!(
+                "echo 'Package: *\nPin: release o=Ubuntu\nPin-Priority: 1000' > '{}'",
+                pref_file.display()
+            ))
+            .status()
+            .and_then(status_err)?;
+
+        process::Command::new("sudo")
+            .arg("apt-get")
+            .arg("upgrade")
+            .arg("--yes")
+            .arg("--allow-downgrades")
+            .status()
+            .and_then(status_err)?;
+    }
+
     process::Command::new("sudo")
-        .arg("add-apt-repository")
-        .arg("--update")
-        .arg("--yes")
-        .arg(source)
+        .arg("rm")
+        .arg("--force")
+        .arg("--verbose")
+        .arg(&pref_file)
         .status()
-        .and_then(status_err)
+        .and_then(status_err)?;
+
+    let source_file = Path::new("/etc/apt/sources.list.d/popopt.list");
+    if remove {
+        process::Command::new("sudo")
+            .arg("rm")
+            .arg("--force")
+            .arg("--verbose")
+            .arg(&source_file)
+            .status()
+            .and_then(status_err)?;
+    } else {
+        let os_release = os_release::OsRelease::new()?;
+        let source = format!("deb {} {} main", url, os_release.version_codename);
+
+        process::Command::new("sudo")
+            .arg("bash")
+            .arg("-c")
+            .arg(format!(
+                "echo '{}' > '{}'",
+                source,
+                source_file.display()
+            ))
+            .status()
+            .and_then(status_err)?;
+    }
+
+    process::Command::new("sudo")
+        .arg("apt-get")
+        .arg("update")
+        .status()
+        .and_then(status_err)?;
+
+    process::Command::new("sudo")
+        .arg("apt-get")
+        .arg("upgrade")
+        .arg("--yes")
+        .status()
+        .and_then(status_err)?;
+
+    Ok(())
 }
 
 fn pop_opt(args: &[String]) -> io::Result<()> {
@@ -229,7 +292,7 @@ fn pop_opt(args: &[String]) -> io::Result<()> {
         None => Ok(()),
         Some("build") => build(&arch, &args[1..]),
         Some("chroot") => chroot(&arch),
-        Some("repo") => repo(&arch),
+        Some("repo") => repo(&arch, &args[1..]),
         Some(arg) => Err(io::Error::new(
             io::ErrorKind::Other,
             format!("unknown subcommand '{}'", arg)
