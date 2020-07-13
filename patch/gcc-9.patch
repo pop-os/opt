@@ -1,17 +1,17 @@
 diff -ruwN original/debian/rules2 patched/debian/rules2
 --- original/debian/rules2	2020-03-31 02:29:36.000000000 -0600
-+++ patched/debian/rules2	2020-07-13 09:51:20.219862855 -0600
-@@ -195,6 +195,13 @@
- 	--prefix=/$(PF) \
- 	--with-gcc-major-version-only \
++++ patched/debian/rules2	2020-07-13 11:00:17.398912600 -0600
+@@ -604,8 +604,16 @@
+ endif
  
-+# pop-opt set flags
-+CFLAGS += $(DEB_CFLAGS_APPEND)
-+CXXFLAGS += $(DEB_CXXFLAGS_APPEND)
-+CFLAGS_FOR_TARGET += $(DEB_CFLAGS_APPEND)
-+CXXFLAGS_FOR_TARGET += $(DEB_CXXFLAGS_APPEND)
-+CONFARGS += --with-arch=$(POP_OPT_ARCH)
-+
- ifneq (,$(with_build_sysroot))
-   CONFARGS += \
- 	--with-as=$(binutils_prefix)/$(DEB_TARGET_GNU_TYPE)-as \
+ ifneq (,$(filter $(DEB_TARGET_ARCH), amd64 i386 hurd-i386 kfreebsd-i386 kfreebsd-amd64))
++ifneq (,$(POP_OPT_ARCH))
++  CFLAGS += -O3
++  CXXFLAGS += -O3
++  CFLAGS_FOR_TARGET += -O3
++  CXXFLAGS_FOR_TARGET += -O3
++  CONFARGS += --with-arch=$(POP_OPT_ARCH) --with-tune=$(POP_OPT_ARCH)
++else
+   CONFARGS += --with-tune=generic
+ endif
++endif
