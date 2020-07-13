@@ -19,6 +19,8 @@ struct Config<'a> {
     dist: &'a str,
     version: &'a str,
     dir: &'a Path,
+    rebuild: bool,
+    retry: bool,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -74,22 +76,26 @@ impl Pkg {
     fn source(&self, config: &Config) -> io::Result<PathBuf> {
         let complete_dir = config.dir.join("source");
         if complete_dir.is_dir() {
-            //TODO: rebuild flag
-            //fs::remove_dir_all(&complete_dir)?;
-            return Ok(complete_dir);
+            if config.rebuild {
+                fs::remove_dir_all(&complete_dir)?;
+            } else {
+                return Ok(complete_dir);
+            }
         }
 
         let dir = config.dir.join("source.partial");
         if dir.is_dir() {
-            //TODO: retry flag
-            //fs::remove_dir_all(&dir)?;
-            return Err(io::Error::new(
-                io::ErrorKind::AlreadyExists,
-                format!(
-                    "'{}' already exists, build is in progress or already failed",
-                    dir.display()
-                )
-            ));
+            if config.retry {
+                fs::remove_dir_all(&dir)?;
+            } else {
+                return Err(io::Error::new(
+                    io::ErrorKind::AlreadyExists,
+                    format!(
+                        "'{}' already exists, build is in progress or already failed",
+                        dir.display()
+                    )
+                ));
+            }
         }
 
         fs::create_dir(&dir)?;
@@ -186,26 +192,30 @@ impl Pkg {
     fn sbuild_thread(&self, source_dsc: &Path, sbuild_arch: &str, config: &Config) -> io::Result<thread::JoinHandle<io::Result<PathBuf>>> {
         let complete_dir = config.dir.join(format!("sbuild-{}", sbuild_arch));
         if complete_dir.is_dir() {
-            //TODO: rebuild flag
-            //fs::remove_dir_all(&complete_dir)?;
-            return Ok(thread::spawn(move || {
-                Ok(complete_dir)
-            }));
+            if config.rebuild {
+                fs::remove_dir_all(&complete_dir)?;
+            } else {
+                return Ok(thread::spawn(move || {
+                    Ok(complete_dir)
+                }));
+            }
         }
 
         let dir = config.dir.join(format!("sbuild-{}.partial", sbuild_arch));
         if dir.is_dir() {
-            //TODO: retry flag
-            //fs::remove_dir_all(&dir)?;
-            return Ok(thread::spawn(move || {
-                Err(io::Error::new(
-                    io::ErrorKind::AlreadyExists,
-                    format!(
-                        "'{}' already exists, build is in progress or already failed",
-                        dir.display()
-                    )
-                ))
-            }));
+            if config.retry {
+                fs::remove_dir_all(&dir)?;
+            } else {
+                return Ok(thread::spawn(move || {
+                    Err(io::Error::new(
+                        io::ErrorKind::AlreadyExists,
+                        format!(
+                            "'{}' already exists, build is in progress or already failed",
+                            dir.display()
+                        )
+                    ))
+                }));
+            }
         }
 
         fs::create_dir(&dir)?;
@@ -316,6 +326,8 @@ r#"$build_environment = {{
             dist,
             version: &version,
             dir: &version_dir,
+            rebuild: false,
+            retry: false,
         };
 
         let source_dsc = self.source(&config)?;
