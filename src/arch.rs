@@ -41,19 +41,23 @@ impl Arch {
     pub fn cflags(&self) -> Vec<String> {
         vec![
             format!("-march={}", self.name),
+            format!("-mtune={}", self.name),
+            format!("-O3"),
         ]
     }
 
     pub fn cxxflags(&self) -> Vec<String> {
         vec![
             format!("-march={}", self.name),
+            format!("-mtune={}", self.name),
+            format!("-O3"),
         ]
     }
 
     pub fn rustflags(&self) -> Vec<String> {
         vec![
-            format!("--codegen"),
-            format!("target-cpu={}", self.name),
+            format!("--codegen"), format!("target-cpu={}", self.name),
+            format!("--codegen"), format!("opt-level=3"),
         ]
     }
 
