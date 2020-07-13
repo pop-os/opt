@@ -6,6 +6,7 @@ use pop_opt::{
     status_err,
 };
 use std::{
+    collections::BTreeMap,
     env,
     fmt::Write,
     fs,
@@ -13,6 +14,8 @@ use std::{
     path::Path,
     process,
 };
+
+pub extern "C" fn interrupt(_signal: i32) {}
 
 fn build(arch: &Arch, args: &[String]) -> io::Result<()> {
     //TODO: passed as argument and used in pkg.build
@@ -35,24 +38,47 @@ fn build(arch: &Arch, args: &[String]) -> io::Result<()> {
     let pool_parent_dir = ensure_dir(repo_dir.join("pool"))?;
     let pool_dir = ensure_dir(pool_parent_dir.join(sbuild_dist))?;
 
+    let mut pkg_threads = BTreeMap::new();
+
     let pkgs = Pkg::load_all("pkg")?;
-    for pkg in pkgs {
+    for pkg in pkgs.iter() {
         if ! args.is_empty() && ! args.contains(&pkg.name) {
             println!("- skipping {}", pkg.name);
             continue;
         }
 
         let pkg_build_dir = ensure_dir(build_dir.join(&pkg.name))?;
-        let debs = pkg.build(arch, sbuild_dist, &sbuild_archs, &pkg_build_dir)?;
+        let threads = pkg.build(arch, sbuild_dist, &sbuild_archs, &pkg_build_dir)?;
+        pkg_threads.insert(pkg.name.clone(), threads);
+    }
 
-        let pkg_pool_dir = ensure_dir(pool_dir.join(&pkg.name))?;
-        for deb in debs {
-            let pool_deb = pkg_pool_dir.join(&deb.file_name().unwrap());
-            if ! pool_deb.is_file() {
-                fs::hard_link(&deb, &pool_deb)?;
+    for pkg in pkgs.iter() {
+        if let Some(threads) = pkg_threads.remove(&pkg.name) {
+            let mut debs = Vec::new();
+            for thread in threads {
+                match thread.join().unwrap() {
+                    Ok(sbuild_dir) => for entry_res in fs::read_dir(&sbuild_dir)? {
+                        let entry = entry_res?;
+                        if entry.file_name().to_str().unwrap_or("").ends_with(".deb") {
+                            debs.push(entry.path());
+                        }
+                    },
+                    Err(err) => {
+                        println!("- {}: {}", pkg.name, err);
+                    }
+                }
+            }
+
+            let pkg_pool_dir = ensure_dir(pool_dir.join(&pkg.name))?;
+            for deb in debs {
+                let pool_deb = pkg_pool_dir.join(&deb.file_name().unwrap());
+                if ! pool_deb.is_file() {
+                    fs::hard_link(&deb, &pool_deb)?;
+                }
             }
         }
     }
+
 
     for sbuild_arch in sbuild_archs.iter() {
         let binary_dir = ensure_dir(comp_dir.join(format!("binary-{}", sbuild_arch)))?;
@@ -301,6 +327,10 @@ fn pop_opt(args: &[String]) -> io::Result<()> {
 }
 
 fn main() {
+    if unsafe { libc::signal(libc::SIGINT, interrupt as libc::sighandler_t) == libc::SIG_ERR } {
+        panic!("failed to handle SIGINT");
+    }
+
     let args: Vec<String> = env::args().skip(1).collect();
     match pop_opt(&args) {
         Ok(()) => (),

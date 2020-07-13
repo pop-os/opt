@@ -11,6 +11,7 @@ use std::{
     path::{Path, PathBuf},
     process,
     str,
+    thread,
 };
 
 struct Config<'a> {
@@ -71,16 +72,32 @@ impl Pkg {
     }
 
     fn source(&self, config: &Config) -> io::Result<PathBuf> {
-        let dir = config.dir.join("source");
-        if dir.is_dir() {
-            return Ok(dir);
+        let complete_dir = config.dir.join("source");
+        if complete_dir.is_dir() {
+            //TODO: rebuild flag
+            //fs::remove_dir_all(&complete_dir)?;
+            return Ok(complete_dir);
         }
+
+        let dir = config.dir.join("source.partial");
+        if dir.is_dir() {
+            //TODO: retry flag
+            //fs::remove_dir_all(&dir)?;
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!(
+                    "'{}' already exists, build is in progress or already failed",
+                    dir.display()
+                )
+            ));
+        }
+
+        fs::create_dir(&dir)?;
 
         let share_name = format!("popopt_{}_{}_{}_{}", config.arch.name, config.dist, self.name, config.version);
         let share_dir = ensure_dir_clean(format!("/var/lib/sbuild/build/{}", share_name))?;
 
         // Download package source
-        //TODO: Add updates and security
         process::Command::new("schroot")
             //TODO: Use sbuild arch?
             .arg("--chroot").arg(format!("{}-amd64-popopt", config.dist))
@@ -104,30 +121,24 @@ impl Pkg {
         }
 
         // Extract package source
+        let original_dir = dir.join("original");
         process::Command::new("dpkg-source")
             .arg("--extract")
             .arg(&dsc_file)
-            .arg(&dir)
-            .current_dir(&config.dir)
+            .arg(&original_dir)
+            .current_dir(&dir)
             .status()
             .and_then(status_err)?;
 
         fs::remove_dir_all(&share_dir)?;
 
-        Ok(dir)
-    }
-
-    fn patched(&self, source_dir: &Path, config: &Config) -> io::Result<PathBuf> {
-        let dir = config.dir.join("patched");
-        if dir.is_dir() {
-            fs::remove_dir_all(&dir)?;
-        }
-
+        // Make a copy where patches are applied
+        let patched_dir = dir.join("patched");
         process::Command::new("cp")
             .arg("-a")
-            .arg(&source_dir)
-            .arg(&dir)
-            .current_dir(&config.dir)
+            .arg(&original_dir)
+            .arg(&patched_dir)
+            .current_dir(&dir)
             .status()
             .and_then(status_err)?;
 
@@ -137,30 +148,66 @@ impl Pkg {
             process::Command::new("patch")
                 .arg("-p1")
                 .arg("-i").arg(&patch_file)
-                .current_dir(&dir)
+                .current_dir(&patched_dir)
                 .status()
                 .and_then(status_err)?;
         }
 
         // Update changelog
+        let new_version = format!("{}popopt{}", config.version, config.arch.level);
         process::Command::new("dch")
             .arg("--distribution").arg(config.dist)
-            .arg("--newversion").arg(format!("{}popopt{}", config.version, config.arch.level))
+            .arg("--newversion").arg(&new_version)
             .arg("Pop!_OS Optimizations")
+            .current_dir(&patched_dir)
+            .status()
+            .and_then(status_err)?;
+
+        // Create DSC file
+        process::Command::new("dpkg-source")
+            .arg("--build").arg(&patched_dir)
             .current_dir(&dir)
             .status()
             .and_then(status_err)?;
 
-        Ok(dir)
+        fs::rename(&dir, &complete_dir)?;
+
+        let new_dsc_file = complete_dir.join(format!("{}_{}.dsc", self.name, new_version));
+        if ! new_dsc_file.is_file() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("failed to find DSC file '{}'", new_dsc_file.display())
+            ));
+        }
+
+        Ok(new_dsc_file)
     }
 
-    fn sbuild(&self, source_dir: &Path, sbuild_arch: &str, config: &Config) -> io::Result<PathBuf> {
-        let dir = config.dir.join(format!("sbuild-{}", sbuild_arch));
-        if dir.is_dir() {
-            //TODO: rebuild
-            //fs::remove_dir_all(&dir)?;
-            return Ok(dir);
+    fn sbuild_thread(&self, source_dsc: &Path, sbuild_arch: &str, config: &Config) -> io::Result<thread::JoinHandle<io::Result<PathBuf>>> {
+        let complete_dir = config.dir.join(format!("sbuild-{}", sbuild_arch));
+        if complete_dir.is_dir() {
+            //TODO: rebuild flag
+            //fs::remove_dir_all(&complete_dir)?;
+            return Ok(thread::spawn(move || {
+                Ok(complete_dir)
+            }));
         }
+
+        let dir = config.dir.join(format!("sbuild-{}.partial", sbuild_arch));
+        if dir.is_dir() {
+            //TODO: retry flag
+            //fs::remove_dir_all(&dir)?;
+            return Ok(thread::spawn(move || {
+                Err(io::Error::new(
+                    io::ErrorKind::AlreadyExists,
+                    format!(
+                        "'{}' already exists, build is in progress or already failed",
+                        dir.display()
+                    )
+                ))
+            }));
+        }
+
         fs::create_dir(&dir)?;
 
         // Create sbuild config
@@ -189,22 +236,28 @@ r#"$build_environment = {{
         }
         command
             .arg("--no-apt-distupgrade")
-            .arg("--verbose")
+            .arg("--quiet")
             .arg(format!("--chroot={}-{}-popopt", config.dist, sbuild_arch))
             .arg(format!("--dist={}", config.dist))
             .arg(format!("--arch={}", sbuild_arch))
             .arg(format!("--extra-repository=deb http://us.archive.ubuntu.com/ubuntu/ {}-updates main restricted universe multiverse", config.dist))
             .arg(format!("--extra-repository=deb http://us.archive.ubuntu.com/ubuntu/ {}-security main restricted universe multiverse", config.dist))
-            .arg(&source_dir)
+            .arg(&source_dsc)
             .current_dir(&dir)
-            .env("SBUILD_CONFIG", &sbuild_conf_file)
-            .status()
-            .and_then(status_err)?;
+            .env("SBUILD_CONFIG", &sbuild_conf_file);
 
-        Ok(dir)
+        Ok(thread::spawn(move || {
+            command
+                .status()
+                .and_then(status_err)?;
+
+            fs::rename(&dir, &complete_dir)?;
+
+            Ok(complete_dir)
+        }))
     }
 
-    pub fn build<P: AsRef<Path>>(&self, arch: &Arch, dist: &str, sbuild_archs: &[&str], dir: P) -> io::Result<Vec<PathBuf>> {
+    pub fn build<P: AsRef<Path>>(&self, arch: &Arch, dist: &str, sbuild_archs: &[&str], dir: P) -> io::Result<Vec<thread::JoinHandle<io::Result<PathBuf>>>> {
         let dir = dir.as_ref();
 
         println!("- Package {} in {}", self.name, dir.display());
@@ -265,21 +318,14 @@ r#"$build_environment = {{
             dir: &version_dir,
         };
 
-        let source_dir = self.source(&config)?;
-        let patched_dir = self.patched(&source_dir, &config)?;
+        let source_dsc = self.source(&config)?;
 
-        let mut debs = Vec::new();
+        let mut threads = Vec::new();
         for sbuild_arch in sbuild_archs {
             println!("    - sbuild {}", sbuild_arch);
-            let sbuild_dir = self.sbuild(&patched_dir, sbuild_arch, &config)?;
-            for entry_res in fs::read_dir(&sbuild_dir)? {
-                let entry = entry_res?;
-                if entry.file_name().to_str().unwrap_or("").ends_with(".deb") {
-                    debs.push(entry.path());
-                }
-            }
+            threads.push(self.sbuild_thread(&source_dsc, sbuild_arch, &config)?);
         }
 
-        Ok(debs)
+        Ok(threads)
     }
 }
