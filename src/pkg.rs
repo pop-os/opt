@@ -75,11 +75,18 @@ impl Pkg {
 
     fn source(&self, config: &Config) -> io::Result<PathBuf> {
         let complete_dir = config.dir.join("source");
+        let new_version = format!("{}popopt{}", config.version, config.arch.level);
+        let new_dsc_file = complete_dir.join(format!("{}_{}.dsc", self.name, new_version));
         if complete_dir.is_dir() {
             if config.rebuild {
                 fs::remove_dir_all(&complete_dir)?;
+            } else if new_dsc_file.is_file() {
+                return Ok(new_dsc_file);
             } else {
-                return Ok(complete_dir);
+                return Err(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("failed to find DSC file '{}'", new_dsc_file.display())
+                ));
             }
         }
 
@@ -160,7 +167,6 @@ impl Pkg {
         }
 
         // Update changelog
-        let new_version = format!("{}popopt{}", config.version, config.arch.level);
         process::Command::new("dch")
             .arg("--distribution").arg(config.dist)
             .arg("--newversion").arg(&new_version)
@@ -178,7 +184,6 @@ impl Pkg {
 
         fs::rename(&dir, &complete_dir)?;
 
-        let new_dsc_file = complete_dir.join(format!("{}_{}.dsc", self.name, new_version));
         if ! new_dsc_file.is_file() {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
