@@ -7,8 +7,8 @@ diff -ruwN source/debian/rules patched/debian/rules
  
 -BUILD_CFLAGS = -O2 -g
 -HOST_CFLAGS = -pipe -O2 -g $(call xx,extra_cflags)
-+BUILD_CFLAGS = -O2 -g $(DEB_CFLAGS_APPEND)
-+HOST_CFLAGS = -pipe -O2 -g $(call xx,extra_cflags) $(DEB_CFLAGS_APPEND)
++BUILD_CFLAGS = -O2 -g $(DEB_CFLAGS_APPEND) -O2
++HOST_CFLAGS = -pipe -O2 -g $(call xx,extra_cflags) $(DEB_CFLAGS_APPEND) -O2
  
  # 32-bit MIPS builders have a 2GB memory space. This is not enough to
  # build test-tgmath3.o with GCC, unless tweaking the garbage collector.
